@@ -83,13 +83,15 @@ struct ScoreEntry: Codable, Identifiable {
     let name: String
     let score: Int
     let mode: GameMode
+    let shapeMode: Bool
     let date: Date
 
-    init(id: UUID = UUID(), name: String, score: Int, mode: GameMode, date: Date = Date()) {
+    init(id: UUID = UUID(), name: String, score: Int, mode: GameMode, shapeMode: Bool, date: Date = Date()) {
         self.id = id
         self.name = name
         self.score = score
         self.mode = mode
+        self.shapeMode = shapeMode
         self.date = date
     }
 }
@@ -113,18 +115,18 @@ final class LeaderboardStore: ObservableObject {
         } catch { }
     }
 
-    func upsertBestScore(name: String, score: Int, mode: GameMode) {
+    func upsertBestScore(name: String, score: Int, mode: GameMode, shapeMode: Bool) {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalName = clean.isEmpty ? "Player" : clean
 
         if let idx = entries.firstIndex(where: {
-            $0.name.lowercased() == finalName.lowercased() && $0.mode == mode
+            $0.name.lowercased() == finalName.lowercased() && $0.mode == mode && $0.shapeMode == shapeMode
         }) {
             if score > entries[idx].score {
-                entries[idx] = ScoreEntry(id: entries[idx].id, name: finalName, score: score, mode: mode, date: Date())
+                entries[idx] = ScoreEntry(id: entries[idx].id, name: finalName, score: score, mode: mode, shapeMode: shapeMode, date: Date())
             }
         } else {
-            entries.append(ScoreEntry(name: finalName, score: score, mode: mode))
+            entries.append(ScoreEntry(name: finalName, score: score, mode: mode, shapeMode: shapeMode))
         }
 
         entries.sort { $0.score > $1.score }
@@ -132,8 +134,11 @@ final class LeaderboardStore: ObservableObject {
         persist()
     }
 
-    func top(for mode: GameMode? = nil) -> [ScoreEntry] {
-        let filtered = (mode == nil) ? entries : entries.filter { $0.mode == mode! }
+    func top(for mode: GameMode? = nil, shapeMode: Bool? = nil) -> [ScoreEntry] {
+        let filtered = entries.filter { entry in
+            (mode == nil || entry.mode == mode!) &&
+            (shapeMode == nil || entry.shapeMode == shapeMode!)
+        }
         return Array(filtered.sorted { $0.score > $1.score }.prefix(10))
     }
 }
@@ -233,7 +238,7 @@ struct ContentView: View {
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.12), lineWidth: 1))
                         .padding(.horizontal)
 
-                        HStack(spacing: 12) {
+                        VStack(spacing: 12) {
                             Button {
                                 path.append(.leaderboard)
                             } label: {
@@ -447,6 +452,7 @@ struct GameView: View {
     let initialPlayerName: String
 
     @EnvironmentObject private var leaderboard: LeaderboardStore
+    @Environment(\.dismiss) private var dismiss
 
     struct Tile: Identifiable {
         let id = UUID()
@@ -472,7 +478,7 @@ struct GameView: View {
     @State private var showConfetti = false
     @State private var showWrong = false
 
-    struct BigPopup: Identifiable, Equatable {
+    struct BigPopup: Identifiable {
         let id = UUID()
         let title: String
         let subtitle: String
@@ -484,6 +490,8 @@ struct GameView: View {
     @State private var gameEnded = false
     @State private var showSaveSheet = false
     @State private var playerName = ""
+
+    @State private var isPaused = false
 
     private var roundProgress: Double {
         guard mode.roundTime > 0 else { return 0 }
@@ -503,6 +511,28 @@ struct GameView: View {
                 header
                 targetPreview
                 grid
+                HStack {
+                    Button("Shuffle") {
+                        startRound(resetTimer: false)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.black.opacity(0.3))
+                    .cornerRadius(8)
+                    .foregroundColor(.white)
+
+                    Spacer()
+
+                    Button(isPaused ? "Resume" : "Pause") {
+                        isPaused.toggle()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.black.opacity(0.3))
+                    .cornerRadius(8)
+                    .foregroundColor(.white)
+                }
+                .padding(.horizontal)
                 Spacer(minLength: 8)
             }
             .padding()
@@ -517,7 +547,7 @@ struct GameView: View {
             startRound(resetTimer: true)
         }
         .onReceive(ticker) { _ in
-            guard !gameEnded else { return }
+            guard !gameEnded && !isPaused else { return }
 
             timeLeft = max(0, Int(ceil(roundEnd.timeIntervalSinceNow)))
             if timeLeft == 0 {
@@ -537,11 +567,16 @@ struct GameView: View {
                 name: $playerName,
                 score: score,
                 mode: mode,
+                shapeMode: shapeModeEnabled,
                 onSave: {
-                    leaderboard.upsertBestScore(name: playerName, score: score, mode: mode)
+                    leaderboard.upsertBestScore(name: playerName, score: score, mode: mode, shapeMode: shapeModeEnabled)
                     showSaveSheet = false
+                    dismiss() // Go back to menu
                 },
-                onSkip: { showSaveSheet = false }
+                onSkip: {
+                    showSaveSheet = false
+                    dismiss() // Go back to menu
+                }
             )
             .presentationDetents([.medium])
         }
@@ -747,7 +782,7 @@ struct GameView: View {
         let newPopup = BigPopup(title: title, subtitle: subtitle, emoji: emoji, accent: accent)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { popup = newPopup }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            withAnimation(.easeInOut(duration: 0.2)) { if popup == newPopup { popup = nil } }
+            withAnimation(.easeInOut(duration: 0.2)) { if popup?.id == newPopup.id { popup = nil } }
         }
     }
 
@@ -761,6 +796,7 @@ struct SaveScoreSheet: View {
     @Binding var name: String
     let score: Int
     let mode: GameMode
+    let shapeMode: Bool
     let onSave: () -> Void
     let onSkip: () -> Void
 
@@ -779,7 +815,7 @@ struct SaveScoreSheet: View {
                     .font(.title2.weight(.heavy))
                     .foregroundColor(.white)
 
-                Text("Score: \(score) • \(mode.title)")
+                Text("Score: \(score) • \(mode.title) • \(shapeMode ? "Shape" : "Color") Mode")
                     .foregroundColor(.white.opacity(0.85))
 
                 TextField("Name (optional)", text: $name)
@@ -813,7 +849,8 @@ struct SaveScoreSheet: View {
 
 struct LeaderboardView: View {
     @EnvironmentObject private var leaderboard: LeaderboardStore
-    @State private var filter: GameMode? = nil
+    @State private var filterMode: GameMode? = nil
+    @State private var filterShape: Bool? = nil
 
     var body: some View {
         ZStack {
@@ -825,13 +862,18 @@ struct LeaderboardView: View {
                     .foregroundColor(.white)
 
                 HStack(spacing: 10) {
-                    filterPill("All", active: filter == nil) { filter = nil }
+                    filterPill("All", active: filterMode == nil && filterShape == nil) { filterMode = nil; filterShape = nil }
                     ForEach(GameMode.allCases) { m in
-                        filterPill(m.title, active: filter == m) { filter = m }
+                        filterPill(m.title, active: filterMode == m && filterShape == nil) { filterMode = m; filterShape = nil }
                     }
                 }
 
-                let rows = leaderboard.top(for: filter)
+                HStack(spacing: 10) {
+                    filterPill("Color Mode", active: filterShape == false) { filterShape = false; filterMode = nil }
+                    filterPill("Shape Mode", active: filterShape == true) { filterShape = true; filterMode = nil }
+                }
+
+                let rows = leaderboard.top(for: filterMode, shapeMode: filterShape)
                 if rows.isEmpty {
                     Text("No scores yet.\nPlay a game and save your score at the end!")
                         .multilineTextAlignment(.center)
@@ -849,7 +891,9 @@ struct LeaderboardView: View {
 
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(item.name).font(.headline).foregroundColor(.white)
-                                        Text(item.mode.title).font(.footnote).foregroundColor(.white.opacity(0.75))
+                                        Text("\(item.mode.title) • \(item.shapeMode ? "Shape" : "Color")")
+                                            .font(.footnote)
+                                            .foregroundColor(.white.opacity(0.75))
                                     }
 
                                     Spacer()
@@ -900,9 +944,9 @@ struct HowToPlayView: View {
             GalaxyBackgroundView()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text("How to Play")
-                        .font(.largeTitle.weight(.heavy))
+                        .font(.title2.weight(.bold))
                         .foregroundColor(.white)
                         .padding(.top, 10)
 
@@ -912,25 +956,26 @@ struct HowToPlayView: View {
                     tipCard("Bonuses", "⚡️ Speed bonus if you tap fast\n🔥 Streak bonus at 3 and 5 correct taps in a row")
                     tipCard("Shape Mode", "When enabled, you must match BOTH color and shape.")
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Tutorial Preview")
-                            .font(.title3.weight(.bold))
+                            .font(.headline.weight(.bold))
                             .foregroundColor(.white)
 
                         Toggle(isOn: $demoShapeMode) {
                             Text("Demo Shape Mode")
                                 .foregroundColor(.white)
-                                .font(.headline)
+                                .font(.subheadline)
                         }
                         .toggleStyle(SwitchToggleStyle(tint: .white.opacity(0.9)))
-                        .padding(12)
+                        .padding(10)
                         .background(.black.opacity(0.22))
-                        .cornerRadius(14)
+                        .cornerRadius(12)
 
                         TutorialMiniGame(shapeMode: demoShapeMode)
                             .padding(.vertical, 4)
+                            .frame(maxHeight: 200) // Limit height for visibility
                     }
-                    .padding(14)
+                    .padding(12)
                     .background(.black.opacity(0.18))
                     .cornerRadius(16)
                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.12), lineWidth: 1))
@@ -944,14 +989,14 @@ struct HowToPlayView: View {
     }
 
     private func tipCard(_ title: String, _ body: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.headline).foregroundColor(.white)
-            Text(body).font(.subheadline).foregroundColor(.white.opacity(0.85))
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.subheadline.weight(.semibold)).foregroundColor(.white)
+            Text(body).font(.caption).foregroundColor(.white.opacity(0.85))
         }
-        .padding(14)
+        .padding(10)
         .background(.black.opacity(0.22))
-        .cornerRadius(14)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.12), lineWidth: 1))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.12), lineWidth: 1))
     }
 }
 
@@ -971,47 +1016,50 @@ struct TutorialMiniGame: View {
     @State private var message: String = "Tap the matching tile!"
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 14).fill(.black.opacity(0.22))
+                    RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.22))
                     if shapeMode {
-                        targetShape.view(color: targetColor).padding(14)
+                        targetShape.view(color: targetColor).padding(10)
                     } else {
-                        RoundedRectangle(cornerRadius: 10).fill(targetColor).padding(14)
+                        RoundedRectangle(cornerRadius: 8).fill(targetColor).padding(10)
                     }
                 }
-                .frame(width: 74, height: 74)
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.20), lineWidth: 1))
+                .frame(width: 60, height: 60)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.20), lineWidth: 1))
 
-                Text(message)
-                    .foregroundColor(.white.opacity(0.9))
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-            }
+                VStack {
+                    Text(message)
+                        .foregroundColor(.white.opacity(0.9))
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 120)
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
-                ForEach(tiles) { t in
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10).fill(t.color)
-                        if shapeMode {
-                            t.shape.view(color: .white.opacity(0.85))
-                                .frame(width: 22, height: 22)
-                                .blendMode(.overlay)
-                        }
-                    }
-                    .aspectRatio(1, contentMode: .fit)
-                    .onTapGesture {
-                        if t.isCorrect {
-                            message = "✅ Perfect! New target..."
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                                newBoard()
-                                message = "Tap the matching tile!"
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 6) {
+                        ForEach(tiles) { t in
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 6).fill(t.color)
+                                if shapeMode {
+                                    t.shape.view(color: .white.opacity(0.85))
+                                        .frame(width: 16, height: 16)
+                                        .blendMode(.overlay)
+                                }
                             }
-                        } else {
-                            message = "❌ Close! Try again."
+                            .aspectRatio(1, contentMode: .fit)
+                            .onTapGesture {
+                                if t.isCorrect {
+                                    message = "✅ Perfect! New target..."
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                        newBoard()
+                                        message = "Tap the matching tile!"
+                                    }
+                                } else {
+                                    message = "❌ Close! Try again."
+                                }
+                            }
                         }
                     }
+                    .frame(width: 100)
                 }
             }
         }
