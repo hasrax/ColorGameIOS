@@ -7,12 +7,26 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		054CA5802F209F8100ECA531 /* ColorGame.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ColorGame.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		054CA5802F209F8100ECA531 /* ColorGame.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = ColorGame.app; path = "/Users/cobsccomp24.2p-023/hasradev/ColorGame/build/Debug-iphoneos/ColorGame.app"; sourceTree = "<absolute>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		054CA59B2F20ABC700ECA531 /* Exceptions for "ColorGame" folder in "ColorGame" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				App/ColorNovaApp.swift,
+				App/ContentView.swift,
+			);
+			target = 054CA57F2F209F8100ECA531 /* ColorGame */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		054CA5822F209F8100ECA531 /* ColorGame */ = {
+		054CA5932F20A6CC00ECA531 /* ColorGame */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				054CA59B2F20ABC700ECA531 /* Exceptions for "ColorGame" folder in "ColorGame" target */,
+			);
 			path = ColorGame;
 			sourceTree = "<group>";
 		};
@@ -32,17 +46,8 @@
 		054CA5772F209F8100ECA531 = {
 			isa = PBXGroup;
 			children = (
-				054CA5822F209F8100ECA531 /* ColorGame */,
-				054CA5812F209F8100ECA531 /* Products */,
+				054CA5932F20A6CC00ECA531 /* ColorGame */,
 			);
-			sourceTree = "<group>";
-		};
-		054CA5812F209F8100ECA531 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				054CA5802F209F8100ECA531 /* ColorGame.app */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -59,9 +64,6 @@
 			buildRules = (
 			);
 			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				054CA5822F209F8100ECA531 /* ColorGame */,
 			);
 			name = ColorGame;
 			packageProductDependencies = (
@@ -95,7 +97,7 @@
 			mainGroup = 054CA5772F209F8100ECA531;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 054CA5812F209F8100ECA531 /* Products */;
+			productRefGroup = 054CA5772F209F8100ECA531;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
